@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión Hospitalaria - Turnos y Medicamentos</title>
+    <style>
+        :root { --primary: #0692fe; --dark: #161616; --bg: #f4f7f6; }
+        * { box-sizing: border-box; font-family: Tahoma, Geneva, sans-serif; }
+        body { margin: 0; background: var(--bg); color: var(--dark); padding: 15px; }
+        header { margin: 0; font-size: 1.3rem; font-weight: bold; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 5px; }
+        input, select { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: 600; }
+        button:hover { opacity: 0.9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        th { background-color: #f8f9fa; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; display: inline-block; }
+        .status-assigned { background-color: #d4edda; color: #155724; }
+        .status-unassigned { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>Módulo Hospitalario: Turnos y Control de Medicamentos</header>
+    <div id="server-status" style="font-size: 0.85rem; color: #666; margin: 5px 0 15px 0;">Verificando conexión con el servidor...</div>
+
+    <div class="grid">
+        <div class="card">
+            <label>Turnos Programados</label>
+            <h2 id="count-programados">0</h2>
+        </div>
+        <div class="card">
+            <label>Turnos Sin Cubrir</label>
+            <h2 id="count-sincubrir" style="color: #d9534f;">0</h2>
+        </div>
+        <div class="card">
+            <label>Medicamentos Registrados</label>
+            <h2 id="count-medicamentos">0</h2>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Programación y Control de Turnos de Enfermería</h3>
+        <form id="form-turno">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <div>
+                    <label>Personal de Enfermería</label>
+                    <select id="enfermera" required>
+                        <option value="">-- Seleccionar --</option>
+                        <option value="Laura Gómez">Laura Gómez</option>
+                        <option value="Carlos Ruiz">Carlos Ruiz</option>
+                        <option value="Ana Martínez">Ana Martínez</option>
+                        <option value="Sin Asignar">Dejar Sin Cubrir</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Área / Servicio</label>
+                    <select id="area" required>
+                        <option value="Urgencias">Urgencias</option>
+                        <option value="UCI">UCI</option>
+                        <option value="Hospitalización">Hospitalización</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Fecha y Hora Inicio</label>
+                    <input type="datetime-local" id="inicio" required>
+                </div>
+                <div>
+                    <label>Fecha y Hora Fin</label>
+                    <input type="datetime-local" id="fin" required>
+                </div>
+            </div>
+            <button type="submit" style="margin-top: 10px;">+ Programar Turno</button>
+        </form>
+
+        <table id="tabla-turnos">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Enfermero/a</th>
+                    <th>Área</th>
+                    <th>Inicio</th>
+                    <th>Fin</th>
+                    <th>Estado</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Los turnos se cargarán aquí desde el servidor -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const API_URL = 'http://localhost:3000';
+
+    async function verificarServidor() {
+        try {
+            const res = await fetch(`${API_URL}/api/estado`);
+            const data = await res.json();
+            document.getElementById('server-status').innerText = '✅ ' + data.mensaje;
+            document.getElementById('server-status').style.color = 'green';
+        } catch (error) {
+            document.getElementById('server-status').innerText = '';
+            document.getElementById('server-status').style.color = 'red';
+        }
+    }
+
+    async function cargarDatos() {
+        try {
+            const resTurnos = await fetch(`${API_URL}/api/turnos`);
+            const turnos = await resTurnos.json();
+            
+            const tbody = document.querySelector('#tabla-turnos tbody');
+            tbody.innerHTML = '';
+            
+            let programados = turnos.length;
+            let sinCubrir = 0;
+
+            turnos.forEach(t => {
+                if (t.estado === 'Sin Cubrir') sinCubrir++;
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td># ${t.id}</td>
+                    <td>${t.enfermera}</td>
+                    <td>${t.area}</td>
+                    <td>${t.inicio.replace('T', ' ')}</td>
+                    <td>${t.fin.replace('T', ' ')}</td>
+                    <td><span class="status-badge ${t.estado === 'Asignado' ? 'status-assigned' : 'status-unassigned'}">${t.estado}</span></td>
+                    <td><button onclick="eliminarTurno(${t.id})" style="background:#d9534f; padding:5px 10px; font-size:0.8rem;">Eliminar</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('count-programados').innerText = programados;
+            document.getElementById('count-sincubrir').innerText = sinCubrir;
+            document.getElementById('count-medicamentos').innerText = 2;
+        } catch (error) {
+            console.error('Error al cargar datos:', error);
+        }
+    }
+
+    document.getElementById('form-turno').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const enfermera = document.getElementById('enfermera').value;
+        const nuevoTurno = {
+            enfermera: enfermera,
+            area: document.getElementById('area').value,
+            inicio: document.getElementById('inicio').value,
+            fin: document.getElementById('fin').value,
+            estado: enfermera === 'Sin Asignar' ? 'Sin Cubrir' : 'Asignado'
+        };
+
+        try {
+            await fetch(`${API_URL}/api/turnos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(nuevoTurno)
+            });
+            document.getElementById('form-turno').reset();
+            cargarDatos();
+        } catch (error) {
+            alert('Error al guardar el turno');
+        }
+    });
+
+    async function eliminarTurno(id) {
+        try {
+            await fetch(`${API_URL}/api/turnos/${id}`, { method: 'DELETE' });
+            cargarDatos();
+        } catch (error) {
+            alert('Error al eliminar el turno');
+        }
+    }
+
+    verificarServidor();
+    cargarDatos();
+</script>
+
+</body>
+</html> 
